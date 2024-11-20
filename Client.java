@@ -28,7 +28,7 @@ public class Client {
         String payload = message + "||" + nextIndex + "||" + nextTag;
         byte[] encryptedMessage = encryptMessage(payload, keyAB);
 
-        board.add(idxAB, encryptedMessage, tagAB);
+        board.add(idxAB, encryptedMessage, tagAB); // Originele tag toevoegen
 
         idxAB = nextIndex;
         tagAB = nextTag;
@@ -37,7 +37,7 @@ public class Client {
 
     public String receive() throws Exception {
         System.out.println("Ophalen bericht bij index: " + idxAB + ", Tag: " + tagAB);
-        byte[] encryptedMessage = board.get(idxAB, tagAB);
+        byte[] encryptedMessage = board.get(idxAB, tagAB); // Zoeken met originele tag
         if (encryptedMessage == null) {
             System.out.println("Geen bericht gevonden.");
             return null;
@@ -52,6 +52,7 @@ public class Client {
 
         return parts[0];
     }
+
 
 
     private byte[] encryptMessage(String message, SecretKey key) throws Exception {

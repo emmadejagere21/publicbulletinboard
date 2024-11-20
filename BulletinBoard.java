@@ -12,13 +12,14 @@ public class BulletinBoard {
     }
 
     public void add(int index, byte[] value, String tag) {
-        System.out.println("Toevoegen aan index: " + index + ", Tag: " + tag);
+        System.out.println("Toevoegen aan index: " + index + ", Originele Tag: " + tag);
         if (!board.containsKey(index)) {
             System.out.println("Index bestaat niet in het bulletin board.");
             return;
         }
-        board.get(index).add(new Pair<>(value, tag));
-        System.out.println("Bericht toegevoegd aan index: " + index);
+        String hashedTag = generateHash(tag);
+        board.get(index).add(new Pair<>(value, hashedTag));
+        System.out.println("Bericht toegevoegd aan index: " + index + ", Hashed Tag: " + hashedTag);
     }
 
     public byte[] get(int index, String preImage) {
@@ -27,7 +28,7 @@ public class BulletinBoard {
             return null;
         }
         String tag = generateHash(preImage);
-        System.out.println("Zoeken naar tag: " + tag + " op index: " + index);
+        System.out.println("Zoeken naar hashed tag: " + tag + " op index: " + index);
         for (Pair<byte[], String> entry : board.get(index)) {
             if (entry.getSecond().equals(tag)) {
                 System.out.println("Bericht gevonden en verwijderd op index: " + index);
@@ -35,9 +36,10 @@ public class BulletinBoard {
                 return entry.getFirst();
             }
         }
-        System.out.println("Geen bericht gevonden op index: " + index + " met tag: " + tag);
+        System.out.println("Geen bericht gevonden op index: " + index + " met hashed tag: " + tag);
         return null; // Geen bericht gevonden
     }
+
 
     public int size() {
         return board.size();

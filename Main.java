@@ -11,9 +11,12 @@ public class Main {
         keyGen.init(128);
         SecretKey initialKey = keyGen.generateKey();
 
+        // Gebruik dezelfde initiële tag voor Alice en Bob
+        String sharedInitialTag = "sharedInitialTag";
+
         // Maak twee clients
-        Client alice = new Client(board, 0, "initialTagAlice", initialKey);
-        Client bob = new Client(board, 0, "initialTagBob", initialKey);
+        Client alice = new Client(board, 0, sharedInitialTag, initialKey);
+        Client bob = new Client(board, 0, sharedInitialTag, initialKey);
 
         // Alice verstuurt een bericht
         alice.send("Hallo Bob!");
@@ -21,5 +24,7 @@ public class Main {
         // Bob ontvangt het bericht
         String receivedMessage = bob.receive();
         System.out.println("Bob ontving: " + receivedMessage);
+
     }
 }
+
