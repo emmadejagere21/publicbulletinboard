@@ -1,5 +1,6 @@
 import javax.crypto.*;
 import javax.crypto.spec.SecretKeySpec;
+import java.rmi.Naming;
 import java.util.Arrays;
 import java.util.Random;
 import java.util.UUID;
@@ -8,27 +9,22 @@ public class Client {
     private int idxAB;
     private String tagAB;
     private SecretKey keyAB;
-    private BulletinBoard board;
+    private BulletinBoardInterface board;
 
-    public Client(BulletinBoard board, int initialIndex, String initialTag, SecretKey initialKey) {
-        this.board = board;
+    public Client(String serverAddress, int initialIndex, String initialTag, SecretKey initialKey) throws Exception {
+        this.board = (BulletinBoardInterface) Naming.lookup("rmi://" + serverAddress + "/BulletinBoard");
         this.idxAB = initialIndex;
         this.tagAB = initialTag;
         this.keyAB = initialKey;
     }
 
     public void send(String message) throws Exception {
-        System.out.println("Versturen bericht: " + message);
-        System.out.println("Huidige index: " + idxAB + ", Tag: " + tagAB);
-
         int nextIndex = new Random().nextInt(board.size());
         String nextTag = UUID.randomUUID().toString();
-        System.out.println("Nieuwe index: " + nextIndex + ", Nieuwe tag: " + nextTag);
-
         String payload = message + "||" + nextIndex + "||" + nextTag;
         byte[] encryptedMessage = encryptMessage(payload, keyAB);
 
-        board.add(idxAB, encryptedMessage, tagAB); // Originele tag toevoegen
+        board.add(idxAB, encryptedMessage, tagAB);
 
         idxAB = nextIndex;
         tagAB = nextTag;
@@ -36,15 +32,12 @@ public class Client {
     }
 
     public String receive() throws Exception {
-        System.out.println("Ophalen bericht bij index: " + idxAB + ", Tag: " + tagAB);
-        byte[] encryptedMessage = board.get(idxAB, tagAB); // Zoeken met originele tag
+        byte[] encryptedMessage = board.get(idxAB, tagAB);
         if (encryptedMessage == null) {
-            System.out.println("Geen bericht gevonden.");
             return null;
         }
 
         String decryptedMessage = decryptMessage(encryptedMessage, keyAB);
-        System.out.println("Gedecrypteerd bericht: " + decryptedMessage);
         String[] parts = decryptedMessage.split("\\|\\|");
         idxAB = Integer.parseInt(parts[1]);
         tagAB = parts[2];
@@ -52,8 +45,6 @@ public class Client {
 
         return parts[0];
     }
-
-
 
     private byte[] encryptMessage(String message, SecretKey key) throws Exception {
         Cipher cipher = Cipher.getInstance("AES");
@@ -67,8 +58,8 @@ public class Client {
         return new String(cipher.doFinal(encryptedMessage));
     }
 
-    private SecretKey deriveKey(byte[] previousKey) throws Exception {
-        byte[] newKeyBytes = Arrays.copyOf(previousKey, 16); // Neem 16 bytes voor AES
+    private SecretKey deriveKey(byte[] previousKey) {
+        byte[] newKeyBytes = Arrays.copyOf(previousKey, 16);
         return new SecretKeySpec(newKeyBytes, "AES");
     }
 }

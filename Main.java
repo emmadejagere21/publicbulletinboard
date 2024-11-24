@@ -2,6 +2,7 @@ import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.swing.*;
 import java.awt.*;
+import java.rmi.Naming;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -12,8 +13,9 @@ public class Main {
     private static JTextArea bobMessages;
 
     public static void main(String[] args) throws Exception {
-        // Initialize the bulletin board
-        BulletinBoard board = new BulletinBoard(100);
+        // Connect to the remote bulletin board
+        String serverAddress = "localhost"; // Change this to the RMI server's address if needed
+        BulletinBoardInterface board = (BulletinBoardInterface) Naming.lookup("rmi://" + serverAddress + "/BulletinBoard");
 
         // Generate an initial key
         KeyGenerator keyGen = KeyGenerator.getInstance("AES");
@@ -24,11 +26,11 @@ public class Main {
         String sharedInitialTag = "sharedInitialTag";
 
         // Create two clients
-        alice = new Client(board, 0, sharedInitialTag, initialKey);
-        bob = new Client(board, 0, sharedInitialTag, initialKey);
+        alice = new Client(serverAddress, 0, sharedInitialTag, initialKey);
+        bob = new Client(serverAddress, 0, sharedInitialTag, initialKey);
 
         // Set up the GUI
-        JFrame frame = new JFrame("Secure Messaging App");
+        JFrame frame = new JFrame("Secure Messaging App with RMI");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(900, 500);
         frame.setLocationRelativeTo(null);

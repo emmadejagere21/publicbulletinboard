@@ -1,47 +1,48 @@
+import java.rmi.RemoteException;
+import java.rmi.server.UnicastRemoteObject;
 import java.security.MessageDigest;
 import java.util.*;
 
-public class BulletinBoard {
+public class BulletinBoard extends UnicastRemoteObject implements BulletinBoardInterface {
     private Map<Integer, List<Pair<byte[], String>>> board;
 
-    public BulletinBoard(int size) {
+    public BulletinBoard(int size) throws RemoteException {
+        super();
         board = new HashMap<>();
         for (int i = 0; i < size; i++) {
             board.put(i, new ArrayList<>());
         }
     }
 
-    public void add(int index, byte[] value, String tag) {
-        System.out.println("Toevoegen aan index: " + index + ", Originele Tag: " + tag);
+    @Override
+    public synchronized void add(int index, byte[] value, String tag) throws RemoteException {
+        System.out.println("Adding at index: " + index + ", Tag: " + tag);
         if (!board.containsKey(index)) {
-            System.out.println("Index bestaat niet in het bulletin board.");
+            System.out.println("Index does not exist.");
             return;
         }
         String hashedTag = generateHash(tag);
         board.get(index).add(new Pair<>(value, hashedTag));
-        System.out.println("Bericht toegevoegd aan index: " + index + ", Hashed Tag: " + hashedTag);
     }
 
-    public byte[] get(int index, String preImage) {
+    @Override
+    public synchronized byte[] get(int index, String preImage) throws RemoteException {
         if (!board.containsKey(index)) {
-            System.out.println("Ongeldige index: " + index);
+            System.out.println("Invalid index: " + index);
             return null;
         }
         String tag = generateHash(preImage);
-        System.out.println("Zoeken naar hashed tag: " + tag + " op index: " + index);
         for (Pair<byte[], String> entry : board.get(index)) {
             if (entry.getSecond().equals(tag)) {
-                System.out.println("Bericht gevonden en verwijderd op index: " + index);
                 board.get(index).remove(entry);
                 return entry.getFirst();
             }
         }
-        System.out.println("Geen bericht gevonden op index: " + index + " met hashed tag: " + tag);
-        return null; // Geen bericht gevonden
+        return null;
     }
 
-
-    public int size() {
+    @Override
+    public int size() throws RemoteException {
         return board.size();
     }
 
@@ -49,35 +50,19 @@ public class BulletinBoard {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] encodedHash = digest.digest(input.getBytes());
-            String hash = bytesToHex(encodedHash);
-            System.out.println("Genereren hash voor input: " + input + ", Hash: " + hash);
-            return hash;
+            return bytesToHex(encodedHash);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
-
     private String bytesToHex(byte[] hash) {
         StringBuilder hexString = new StringBuilder();
         for (byte b : hash) {
             String hex = Integer.toHexString(0xff & b);
-            if (hex.length() == 1) {
-                hexString.append('0');
-            }
+            if (hex.length() == 1) hexString.append('0');
             hexString.append(hex);
         }
         return hexString.toString();
-    }
-
-    // Debugging method to print the state of the bulletin board
-    public void printState() {
-        System.out.println("Bulletin Board State:");
-        for (Map.Entry<Integer, List<Pair<byte[], String>>> entry : board.entrySet()) {
-            System.out.println("Index: " + entry.getKey() + ", Berichten: " + entry.getValue().size());
-            for (Pair<byte[], String> pair : entry.getValue()) {
-                System.out.println(" - Tag: " + pair.getSecond());
-            }
-        }
     }
 }
