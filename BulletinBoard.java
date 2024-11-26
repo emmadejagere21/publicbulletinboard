@@ -4,7 +4,24 @@ import java.security.MessageDigest;
 import java.util.*;
 
 public class BulletinBoard extends UnicastRemoteObject implements BulletinBoardInterface {
-    private Map<Integer, List<Pair<byte[], String>>> board;
+    private Map<Integer, List<Message>> board;
+
+    // Define Message class to store value, tag, and deleted flag
+    static class Message {
+        byte[] value;
+        String tag;
+        boolean deleted;
+
+        Message(byte[] value, String tag) {
+            this.value = value;
+            this.tag = tag;
+            this.deleted = false;  // Initially not deleted
+        }
+
+        void markAsDeleted() {
+            this.deleted = true;
+        }
+    }
 
     public BulletinBoard(int size) throws RemoteException {
         super();
@@ -21,17 +38,11 @@ public class BulletinBoard extends UnicastRemoteObject implements BulletinBoardI
             System.out.println("Index does not exist.");
             return;
         }
+
         String hashedTag = generateHash(tag);
 
-        //Avoiding duplicates
-        for (Pair<byte[], String> entry : board.get(index)) {
-            if (entry.getSecond().equals(hashedTag)) {
-                System.out.println("Tag already exists.");
-                return;
-            }
-        }
-
-        board.get(index).add(new Pair<>(value, hashedTag));
+        // Append the new message instead of deleting previous ones
+        board.get(index).add(new Message(value, hashedTag));
     }
 
     @Override
@@ -40,11 +51,13 @@ public class BulletinBoard extends UnicastRemoteObject implements BulletinBoardI
             System.out.println("Invalid index: " + index);
             return null;
         }
+
         String tag = generateHash(preImage);
-        for (Pair<byte[], String> entry : board.get(index)) {
-            if (entry.getSecond().equals(tag)) {
-                board.get(index).remove(entry);
-                return entry.getFirst();
+        for (Message entry : board.get(index)) {
+            if (entry.tag.equals(tag) && !entry.deleted) {
+                // Instead of deleting, we mark as deleted
+                entry.markAsDeleted();
+                return entry.value;
             }
         }
         return null;
@@ -55,6 +68,7 @@ public class BulletinBoard extends UnicastRemoteObject implements BulletinBoardI
         return board.size();
     }
 
+    // Helper method to generate hash of the tag
     private String generateHash(String input) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
