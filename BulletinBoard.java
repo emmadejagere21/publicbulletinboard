@@ -22,6 +22,15 @@ public class BulletinBoard extends UnicastRemoteObject implements BulletinBoardI
             return;
         }
         String hashedTag = generateHash(tag);
+
+        //Avoiding duplicates
+        for (Pair<byte[], String> entry : board.get(index)) {
+            if (entry.getSecond().equals(hashedTag)) {
+                System.out.println("Tag already exists.");
+                return;
+            }
+        }
+
         board.get(index).add(new Pair<>(value, hashedTag));
     }
 
