@@ -1,10 +1,13 @@
-import javax.crypto.KeyGenerator;
+import javax.crypto.KeyAgreement;
 import javax.crypto.SecretKey;
-import javax.swing.*;
+import javax.crypto.spec.SecretKeySpec;
 import java.awt.*;
 import java.rmi.Naming;
+import java.security.*;
+import java.util.Arrays;
 import java.util.Timer;
 import java.util.TimerTask;
+import javax.swing.*;
 
 public class Main {
     private static Client alice;
@@ -13,21 +16,23 @@ public class Main {
     private static JTextArea bobMessages;
 
     public static void main(String[] args) throws Exception {
-        // Connect to the remote bulletin board
-        String serverAddress = "localhost"; // Change this to the RMI server's address if needed
-        BulletinBoardInterface board = (BulletinBoardInterface) Naming.lookup("rmi://" + serverAddress + "/BulletinBoard");
+        // Diffie-Hellman key exchange for local clients
+        KeyPair aliceKeyPair = generateDHKeyPair();
+        KeyPair bobKeyPair = generateDHKeyPair();
 
-        // Generate an initial key
-        KeyGenerator keyGen = KeyGenerator.getInstance("AES");
-        keyGen.init(128);
-        SecretKey initialKey = keyGen.generateKey();
+        // Exchange public keys and derive shared secrets
+        SecretKey aliceSharedKey = deriveSharedSecret(aliceKeyPair.getPrivate(), bobKeyPair.getPublic());
+        SecretKey bobSharedKey = deriveSharedSecret(bobKeyPair.getPrivate(), aliceKeyPair.getPublic());
 
-        // Shared tag for Alice and Bob
+        // Verify that both shared keys are the same
+        assert aliceSharedKey.equals(bobSharedKey) : "Key mismatch between Alice and Bob";
+
+        // Shared initial tag for both clients
         String sharedInitialTag = "sharedInitialTag";
 
-        // Create two clients
-        alice = new Client(serverAddress, 0, sharedInitialTag, initialKey);
-        bob = new Client(serverAddress, 0, sharedInitialTag, initialKey);
+        // Create two clients using the derived shared key
+        alice = new Client("localhost", 0, sharedInitialTag, aliceSharedKey);
+        bob = new Client("localhost", 0, sharedInitialTag, bobSharedKey);
 
         // Set up the GUI
         JFrame frame = new JFrame("Secure Messaging App with RMI");
@@ -57,7 +62,6 @@ public class Main {
         // Add panels to the main layout
         mainPanel.add(alicePanel);
         mainPanel.add(bobPanel);
-
         frame.add(mainPanel);
         frame.setVisible(true);
 
@@ -95,13 +99,10 @@ public class Main {
             public void run() {
                 SwingUtilities.invokeLater(() -> {
                     try {
-                        // Bob receives messages from Alice
                         String bobMessage = bob.receive();
                         if (bobMessage != null) {
                             bobMessages.append("Alice: " + bobMessage + "\n");
                         }
-
-                        // Alice receives messages from Bob
                         String aliceMessage = alice.receive();
                         if (aliceMessage != null) {
                             aliceMessages.append("Bob: " + aliceMessage + "\n");
@@ -135,5 +136,21 @@ public class Main {
 
     private static void showError(JFrame frame, String message) {
         JOptionPane.showMessageDialog(frame, message, "Error", JOptionPane.ERROR_MESSAGE);
+    }
+
+    private static KeyPair generateDHKeyPair() throws NoSuchAlgorithmException {
+        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
+        keyGen.initialize(2048);
+        return keyGen.generateKeyPair();
+    }
+
+    private static SecretKey deriveSharedSecret(PrivateKey privateKey, PublicKey publicKey) throws Exception {
+        KeyAgreement keyAgreement = KeyAgreement.getInstance("DH");
+        keyAgreement.init(privateKey);
+        keyAgreement.doPhase(publicKey, true);
+        byte[] sharedSecret = keyAgreement.generateSecret();
+        MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
+        byte[] derivedKey = Arrays.copyOf(sha256.digest(sharedSecret), 16); // AES-128 key size
+        return new SecretKeySpec(derivedKey, "AES");
     }
 }

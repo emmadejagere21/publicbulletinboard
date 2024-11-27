@@ -2,17 +2,24 @@ import javax.crypto.*;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.rmi.Naming;
-import java.security.MessageDigest;
+import java.security.*;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Random;
 import java.util.UUID;
-import java.security.SecureRandom;
 
 public class Client {
     private int idxAB;
     private String tagAB;
     private SecretKey keyAB;
     private BulletinBoardInterface board;
+    private static final Random RANDOM = new SecureRandom();
+
+    private static final int IV_SIZE = 12;        // IV size for AES-GCM
+    private static final int TAG_LENGTH = 128;    // Authentication tag length for AES-GCM
+    private static final int DUMMY_RATE = 3;      // One dummy message per 3 real messages for unlinkability
+
+    private int messageCounter = 0;  // Tracks message count to insert dummies at regular intervals
 
     public Client(String serverAddress, int initialIndex, String initialTag, SecretKey initialKey) throws Exception {
         this.board = (BulletinBoardInterface) Naming.lookup("rmi://" + serverAddress + "/BulletinBoard");
@@ -21,19 +28,35 @@ public class Client {
         this.keyAB = initialKey;
     }
 
+    // Send a message with dummy messages injected periodically for unlinkability
     public void send(String message) throws Exception {
-        int nextIndex = new Random().nextInt(board.size());
+        int nextIndex = RANDOM.nextInt(board.size());
         String nextTag = UUID.randomUUID().toString();
         String payload = message + "||" + nextIndex + "||" + nextTag;
-        byte[] encryptedMessage = encryptMessage(payload, keyAB);
 
+        byte[] encryptedMessage = encryptMessage(payload, keyAB);
         board.add(idxAB, encryptedMessage, tagAB);
+
+        // Inject dummy message every DUMMY_RATE real messages
+        if (++messageCounter % DUMMY_RATE == 0) {
+            String dummyPayload = generateDummyPayload();
+            byte[] encryptedDummy = encryptMessage(dummyPayload, keyAB);
+            board.add(RANDOM.nextInt(board.size()), encryptedDummy, UUID.randomUUID().toString());
+        }
 
         idxAB = nextIndex;
         tagAB = nextTag;
         keyAB = deriveKey(keyAB.getEncoded());
     }
 
+    // Generate a dummy payload
+    private String generateDummyPayload() {
+        byte[] dummyData = new byte[32];
+        RANDOM.nextBytes(dummyData);
+        return Base64.getEncoder().encodeToString(dummyData);
+    }
+
+    // Receive a message
     public String receive() throws Exception {
         byte[] encryptedMessage = board.get(idxAB, tagAB);
         if (encryptedMessage == null) {
@@ -42,6 +65,7 @@ public class Client {
 
         String decryptedMessage = decryptMessage(encryptedMessage, keyAB);
         String[] parts = decryptedMessage.split("\\|\\|");
+
         idxAB = Integer.parseInt(parts[1]);
         tagAB = parts[2];
         keyAB = deriveKey(keyAB.getEncoded());
@@ -49,37 +73,36 @@ public class Client {
         return parts[0];
     }
 
+    // Encrypt a message using AES-GCM
     private byte[] encryptMessage(String message, SecretKey key) throws Exception {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        byte[] iv = new byte[12];
-        new SecureRandom().nextBytes(iv); // IV is randomly generated
-        GCMParameterSpec spec = new GCMParameterSpec(128, iv); //128 bit auth tag length
+        byte[] iv = new byte[IV_SIZE];
+        RANDOM.nextBytes(iv);
+        GCMParameterSpec spec = new GCMParameterSpec(TAG_LENGTH, iv);
         cipher.init(Cipher.ENCRYPT_MODE, key, spec);
 
-        byte[] encryptedMessage = cipher.doFinal(message.getBytes()); // Encrypt the message
-        byte[] result = new byte[iv.length + encryptedMessage.length]; // Combine IV and encrypted message
-        System.arraycopy(iv, 0, result, 0, iv.length); // Copy IV to the beginning of the result
-        System.arraycopy(encryptedMessage, 0, result, iv.length, encryptedMessage.length); // Copy encrypted message to the result
+        byte[] encryptedMessage = cipher.doFinal(message.getBytes());
+        byte[] result = new byte[iv.length + encryptedMessage.length];
+        System.arraycopy(iv, 0, result, 0, iv.length);
+        System.arraycopy(encryptedMessage, 0, result, iv.length, encryptedMessage.length);
         return result;
-
-
-
     }
 
+    // Decrypt a message using AES-GCM
     private String decryptMessage(byte[] encryptedMessage, SecretKey key) throws Exception {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        byte[] iv = Arrays.copyOfRange(encryptedMessage, 0, 12); // Extract IV from the beginning of the message
-        byte[] cipherText = Arrays.copyOfRange(encryptedMessage, 12, encryptedMessage.length); // Extract encrypted message
-        GCMParameterSpec spec = new GCMParameterSpec(128, iv); //128 bit auth tag length
-        cipher.init(Cipher.DECRYPT_MODE, key,spec);
+        byte[] iv = Arrays.copyOfRange(encryptedMessage, 0, IV_SIZE);
+        byte[] cipherText = Arrays.copyOfRange(encryptedMessage, IV_SIZE, encryptedMessage.length);
+        GCMParameterSpec spec = new GCMParameterSpec(TAG_LENGTH, iv);
+        cipher.init(Cipher.DECRYPT_MODE, key, spec);
         return new String(cipher.doFinal(cipherText));
     }
 
+    // Derive a new key from the previous key using SHA-256 for forward secrecy
     private SecretKey deriveKey(byte[] previousKey) throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         byte[] hash = digest.digest(previousKey);
-
-        byte[] newKeyBytes = Arrays.copyOf(hash, 16); // Use the first 16 bytes of the hash as the new key
+        byte[] newKeyBytes = Arrays.copyOf(hash, 16); // Use first 16 bytes for AES-128
         return new SecretKeySpec(newKeyBytes, "AES");
     }
 }
