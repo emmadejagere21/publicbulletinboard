@@ -1,19 +1,25 @@
 import javax.crypto.KeyAgreement;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
+import javax.swing.*;
 import java.awt.*;
+import java.io.*;
 import java.rmi.Naming;
 import java.security.*;
-import java.util.Arrays;
+import java.util.*;
+import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
-import javax.swing.*;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import java.lang.reflect.Type;
 
 public class Main {
     private static Client alice;
     private static Client bob;
     private static JTextArea aliceMessages;
     private static JTextArea bobMessages;
+    private static final String MESSAGES_DIR = "messages";
 
     public static void main(String[] args) throws Exception {
         // Diffie-Hellman key exchange for local clients
@@ -63,6 +69,21 @@ public class Main {
         mainPanel.add(alicePanel);
         mainPanel.add(bobPanel);
         frame.add(mainPanel);
+
+        // Add export button
+        JButton exportButton = new JButton("Export Conversation");
+        exportButton.addActionListener(e -> exportConversation(frame));
+        frame.add(exportButton, BorderLayout.SOUTH);
+
+        // Show import dialog
+        int choice = JOptionPane.showOptionDialog(frame, "Do you want to import messages or start a new conversation?",
+                "Import or New", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE, null,
+                new String[]{"Import", "New"}, "New");
+
+        if (choice == JOptionPane.YES_OPTION) {
+            importConversation(frame);
+        }
+
         frame.setVisible(true);
 
         // Action listeners for sending messages
@@ -71,7 +92,7 @@ public class Main {
             if (!message.isEmpty()) {
                 try {
                     alice.send(message);
-                    aliceMessages.append("Me: " + message + "\n");
+                    aliceMessages.append("Alice: " + message + "\n");
                     aliceInput.setText("");
                 } catch (Exception ex) {
                     showError(frame, "Failed to send message: " + ex.getMessage());
@@ -84,7 +105,7 @@ public class Main {
             if (!message.isEmpty()) {
                 try {
                     bob.send(message);
-                    bobMessages.append("Me: " + message + "\n");
+                    bobMessages.append("Bob: " + message + "\n");
                     bobInput.setText("");
                 } catch (Exception ex) {
                     showError(frame, "Failed to send message: " + ex.getMessage());
@@ -152,5 +173,44 @@ public class Main {
         MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
         byte[] derivedKey = Arrays.copyOf(sha256.digest(sharedSecret), 16); // AES-128 key size
         return new SecretKeySpec(derivedKey, "AES");
+    }
+
+    private static void exportConversation(JFrame frame) {
+        File messagesDir = new File(MESSAGES_DIR);
+        if (!messagesDir.exists()) {
+            messagesDir.mkdir();
+        }
+
+        String fileName = JOptionPane.showInputDialog(frame, "Enter file name to save:", "Export Conversation", JOptionPane.PLAIN_MESSAGE);
+        if (fileName != null && !fileName.trim().isEmpty()) {
+            File fileToSave = new File(messagesDir, fileName + ".json");
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(fileToSave))) {
+                Gson gson = new Gson();
+                List<String> messages = Arrays.asList(aliceMessages.getText(), bobMessages.getText());
+                writer.write(gson.toJson(messages));
+            } catch (IOException e) {
+                showError(frame, "Failed to save conversation: " + e.getMessage());
+            }
+        }
+    }
+
+    private static void importConversation(JFrame frame) {
+        JFileChooser fileChooser = new JFileChooser(MESSAGES_DIR);
+        fileChooser.setDialogTitle("Import Conversation");
+        int userSelection = fileChooser.showOpenDialog(frame);
+        if (userSelection == JFileChooser.APPROVE_OPTION) {
+            File fileToOpen = fileChooser.getSelectedFile();
+            try (BufferedReader reader = new BufferedReader(new FileReader(fileToOpen))) {
+                Gson gson = new Gson();
+                Type type = new TypeToken<List<String>>() {}.getType();
+                List<String> messages = gson.fromJson(reader, type);
+                if (messages.size() == 2) {
+                    aliceMessages.setText(messages.get(0));
+                    bobMessages.setText(messages.get(1));
+                }
+            } catch (IOException e) {
+                showError(frame, "Failed to load conversation: " + e.getMessage());
+            }
+        }
     }
 }
