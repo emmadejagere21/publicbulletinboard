@@ -5,6 +5,8 @@ import java.util.*;
 
 public class BulletinBoard extends UnicastRemoteObject implements BulletinBoardInterface {
     private Map<Integer, List<Message>> board;
+    private Map<String, Boolean> clientStatus = new HashMap<>();
+    private Map<String, Queue<byte[]>> offlineMessages = new HashMap<>();
 
     // Define Message class to store value, tag, and deleted flag
     static class Message {
@@ -33,35 +35,36 @@ public class BulletinBoard extends UnicastRemoteObject implements BulletinBoardI
 
     @Override
     public synchronized void add(int index, byte[] value, String tag) throws RemoteException {
-        System.out.println("Adding at index: " + index + ", Tag: " + tag);
-        if (!board.containsKey(index)) {
-            System.out.println("Index does not exist.");
-            return;
-        }
-
         String hashedTag = generateHash(tag);
-
-        // Append the new message instead of deleting previous ones
+        board.computeIfAbsent(index, k -> new ArrayList<>());
         board.get(index).add(new Message(value, hashedTag));
+        System.out.println("Bericht toegevoegd aan index: " + index + " met tag: " + tag);
     }
+
+
+
 
     @Override
     public synchronized byte[] get(int index, String preImage) throws RemoteException {
         if (!board.containsKey(index)) {
-            System.out.println("Invalid index: " + index);
+            System.out.println("Ongeldige index: " + index);
             return null;
         }
 
         String tag = generateHash(preImage);
         for (Message entry : board.get(index)) {
             if (entry.tag.equals(tag) && !entry.deleted) {
-                // Instead of deleting, we mark as deleted
                 entry.markAsDeleted();
+                System.out.println("Bericht opgehaald van index: " + index + " met tag: " + tag);
                 return entry.value;
             }
         }
+        System.out.println("Geen bericht gevonden voor index: " + index + ", tag: " + tag);
         return null;
     }
+
+
+
 
     @Override
     public int size() throws RemoteException {
@@ -88,4 +91,33 @@ public class BulletinBoard extends UnicastRemoteObject implements BulletinBoardI
         }
         return hexString.toString();
     }
+
+    @Override
+    public synchronized void updateClientStatus(String tag, boolean status) throws RemoteException {
+        clientStatus.put(tag, status);
+        System.out.println("Status bijgewerkt: " + tag + " is " + (status ? "online" : "offline"));
+    }
+
+    @Override
+    public synchronized boolean isClientOnline(String tag) throws RemoteException {
+        return clientStatus.getOrDefault(tag, false);
+    }
+
+    // Add method to store offline messages
+    public synchronized void saveOfflineMessage(String tag, byte[] message) throws RemoteException {
+        offlineMessages.putIfAbsent(tag, new LinkedList<>());
+        offlineMessages.get(tag).add(message);
+        System.out.println("Message saved for offline user with tag: " + tag);
+    }
+
+    // Add method to retrieve offline messages
+    @Override
+    public synchronized List<byte[]> getOfflineMessages(String tag) throws RemoteException {
+        List<byte[]> messages = new ArrayList<>(offlineMessages.getOrDefault(tag, new LinkedList<>()));
+        offlineMessages.remove(tag); // Clear messages after retrieval
+        return messages;
+    }
+
+
+
 }

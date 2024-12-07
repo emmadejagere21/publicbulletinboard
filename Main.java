@@ -19,6 +19,10 @@ public class Main {
     private static Client bob;
     private static JTextArea aliceMessages;
     private static JTextArea bobMessages;
+    private static JLabel aliceStatus;
+    private static JLabel bobStatus;
+    private static JButton aliceToggleStatus;
+    private static JButton bobToggleStatus;
     private static final String MESSAGES_DIR = "messages";
 
     public static void main(String[] args) throws Exception {
@@ -52,18 +56,22 @@ public class Main {
         // Alice's Panel
         aliceMessages = new JTextArea();
         aliceMessages.setEditable(false);
+        aliceStatus = new JLabel("Status: Offline");
+        aliceToggleStatus = new JButton("Go Online");
         JScrollPane aliceScroll = new JScrollPane(aliceMessages);
         JTextField aliceInput = new JTextField();
         JButton aliceSend = new JButton("Send");
-        JPanel alicePanel = createUserPanel("Alice", Color.BLUE, aliceMessages, aliceInput, aliceSend);
+        JPanel alicePanel = createUserPanel("Alice", Color.BLUE, aliceMessages, aliceInput, aliceSend, aliceStatus, aliceToggleStatus);
 
         // Bob's Panel
         bobMessages = new JTextArea();
         bobMessages.setEditable(false);
+        bobStatus = new JLabel("Status: Offline");
+        bobToggleStatus = new JButton("Go Online");
         JScrollPane bobScroll = new JScrollPane(bobMessages);
         JTextField bobInput = new JTextField();
         JButton bobSend = new JButton("Send");
-        JPanel bobPanel = createUserPanel("Bob", Color.GREEN, bobMessages, bobInput, bobSend);
+        JPanel bobPanel = createUserPanel("Bob", Color.GREEN, bobMessages, bobInput, bobSend, bobStatus, bobToggleStatus);
 
         // Add panels to the main layout
         mainPanel.add(alicePanel);
@@ -75,22 +83,23 @@ public class Main {
         exportButton.addActionListener(e -> exportConversation(frame));
         frame.add(exportButton, BorderLayout.SOUTH);
 
-        // Show import dialog
-        int choice = JOptionPane.showOptionDialog(frame, "Do you want to import messages or start a new conversation?",
-                "Import or New", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE, null,
-                new String[]{"Import", "New"}, "New");
-
-        if (choice == JOptionPane.YES_OPTION) {
-            importConversation(frame);
-        }
-
         frame.setVisible(true);
 
-        // Action listeners for sending messages
+        // Action listeners for toggle status buttons
+        aliceToggleStatus.addActionListener(e ->
+                toggleClientStatus(alice, aliceStatus, aliceToggleStatus, aliceMessages, "Alice"));
+
+        bobToggleStatus.addActionListener(e ->
+                toggleClientStatus(bob, bobStatus, bobToggleStatus, bobMessages, "Bob"));
+
         aliceSend.addActionListener(e -> {
             String message = aliceInput.getText();
             if (!message.isEmpty()) {
                 try {
+                    if (!alice.isOnline()) {
+                        showError(frame, "Alice is offline. Cannot send messages.");
+                        return;
+                    }
                     alice.send(message);
                     aliceMessages.append("Alice: " + message + "\n");
                     aliceInput.setText("");
@@ -104,6 +113,10 @@ public class Main {
             String message = bobInput.getText();
             if (!message.isEmpty()) {
                 try {
+                    if (!bob.isOnline()) {
+                        showError(frame, "Bob is offline. Cannot send messages.");
+                        return;
+                    }
                     bob.send(message);
                     bobMessages.append("Bob: " + message + "\n");
                     bobInput.setText("");
@@ -113,30 +126,43 @@ public class Main {
             }
         });
 
-        // Automatic message checking
+
+        // Automatic status and message checking
         Timer timer = new Timer();
         timer.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {
                 SwingUtilities.invokeLater(() -> {
                     try {
-                        String bobMessage = bob.receive();
-                        if (bobMessage != null) {
-                            bobMessages.append("Alice: " + bobMessage + "\n");
+                        if (alice.isOnline()) {
+                            String aliceMessage = alice.receive();
+                            if (aliceMessage != null) {
+                                aliceMessages.append("Bob: " + aliceMessage + "\n");
+                                System.out.println("Bericht ontvangen door Alice: " + aliceMessage);
+                            }
                         }
-                        String aliceMessage = alice.receive();
-                        if (aliceMessage != null) {
-                            aliceMessages.append("Bob: " + aliceMessage + "\n");
+                        if (bob.isOnline()) {
+                            String bobMessage = bob.receive();
+                            if (bobMessage != null) {
+                                bobMessages.append("Alice: " + bobMessage + "\n");
+                                System.out.println("Bericht ontvangen door Bob: " + bobMessage);
+                            }
                         }
                     } catch (Exception ex) {
-                        // Ignore errors during automatic checking
+                        ex.printStackTrace();
                     }
                 });
             }
-        }, 1000, 1000); // Check every second
+        }, 1000, 1000); // Controleer elke seconde
+
+        // Elke seconde controleren
+
+
+
     }
 
-    private static JPanel createUserPanel(String username, Color borderColor, JTextArea messageArea, JTextField inputField, JButton sendButton) {
+
+    private static JPanel createUserPanel(String username, Color borderColor, JTextArea messageArea, JTextField inputField, JButton sendButton, JLabel statusLabel, JButton toggleStatusButton) {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(borderColor, 2), username));
         panel.setBackground(new Color(240, 240, 255));
@@ -149,10 +175,42 @@ public class Main {
         inputPanel.add(inputField, BorderLayout.CENTER);
         inputPanel.add(sendButton, BorderLayout.EAST);
 
+        JPanel statusPanel = new JPanel(new GridLayout(1, 2));
+        statusPanel.add(statusLabel);
+        statusPanel.add(toggleStatusButton);
+
+        panel.add(statusPanel, BorderLayout.NORTH);
         panel.add(scrollPane, BorderLayout.CENTER);
         panel.add(inputPanel, BorderLayout.SOUTH);
 
         return panel;
+    }
+
+    private static void toggleClientStatus(Client client, JLabel statusLabel, JButton toggleButton, JTextArea messageArea, String clientName) {
+        try {
+            if (client.isOnline()) {
+                client.logout();
+                statusLabel.setText("Status: Offline");
+                toggleButton.setText("Go Online");
+                System.out.println(clientName + " is offline.");
+            } else {
+                client.login();
+                statusLabel.setText("Status: Online");
+                toggleButton.setText("Go Offline");
+                System.out.println(clientName + " is online.");
+
+                // Offline berichten ophalen en aan de GUI toevoegen
+                List<byte[]> offlineMessages = client.receiveOfflineMessages();
+                for (byte[] encryptedMessage : offlineMessages) {
+                    String message = client.decryptMessage(encryptedMessage);
+                    messageArea.append(clientName + ": " + message + "\n");
+                    System.out.println("Offline bericht toegevoegd aan GUI: " + message);
+                }
+            }
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(null, "Fout bij status wisselen: " + e.getMessage(), "Fout", JOptionPane.ERROR_MESSAGE);
+            e.printStackTrace();
+        }
     }
 
     private static void showError(JFrame frame, String message) {
