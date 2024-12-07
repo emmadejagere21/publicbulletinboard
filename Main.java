@@ -203,8 +203,13 @@ public class Main {
                 List<byte[]> offlineMessages = client.receiveOfflineMessages();
                 for (byte[] encryptedMessage : offlineMessages) {
                     String message = client.decryptMessage(encryptedMessage);
-                    messageArea.append(clientName + ": " + message + "\n");
-                    System.out.println("Offline bericht toegevoegd aan GUI: " + message);
+
+                    // Verwerk alleen de daadwerkelijke inhoud van het bericht
+                    String[] parts = message.split("\\|\\|");
+                    String actualMessage = parts[0]; // Eerste deel is de inhoud
+
+                    messageArea.append(clientName + ": " + actualMessage + "\n");
+                    System.out.println("Offline bericht toegevoegd aan GUI: " + actualMessage);
                 }
             }
         } catch (Exception e) {
@@ -212,6 +217,7 @@ public class Main {
             e.printStackTrace();
         }
     }
+
 
     private static void showError(JFrame frame, String message) {
         JOptionPane.showMessageDialog(frame, message, "Error", JOptionPane.ERROR_MESSAGE);
