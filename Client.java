@@ -3,10 +3,7 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.rmi.Naming;
 import java.security.*;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.Random;
-import java.util.UUID;
+import java.util.*;
 
 public class Client {
     private int idxAB;
@@ -18,6 +15,10 @@ public class Client {
     private static final int IV_SIZE = 12;        // IV size for AES-GCM
     private static final int TAG_LENGTH = 128;    // Authentication tag length for AES-GCM
     private static final int DUMMY_RATE = 3;      // One dummy message per 3 real messages for unlinkability
+    private static final int MAX_MESSAGES = 3;
+    private int sentMessages = 0;
+    private Queue<Long> messageTimestamps = new LinkedList<>();
+    private static final long TIME_WINDOW_MS = 60000;
 
     private int messageCounter = 0;  // Tracks message count to insert dummies at regular intervals
 
@@ -30,6 +31,22 @@ public class Client {
 
     // Send a message with dummy messages injected periodically for unlinkability
     public void send(String message) throws Exception {
+        long currentTime = System.currentTimeMillis();
+
+        // Verwijder oude tijdstempels buiten het tijdsvenster
+        while (!messageTimestamps.isEmpty() && currentTime - messageTimestamps.peek() > TIME_WINDOW_MS) {
+            messageTimestamps.poll();
+        }
+
+        // Controleer of de limiet is bereikt
+        if (messageTimestamps.size() >= MAX_MESSAGES) {
+            throw new Exception("Rate limit exceeded: Maximum " + MAX_MESSAGES + " messages per minute allowed.");
+        }
+
+        // Voeg de huidige tijdstempel toe en verstuur het bericht
+        messageTimestamps.add(currentTime);
+
+        // Bestaande logica voor het verzenden van berichten
         int nextIndex = RANDOM.nextInt(board.size());
         String nextTag = UUID.randomUUID().toString();
         String payload = message + "||" + nextIndex + "||" + nextTag;
@@ -37,7 +54,7 @@ public class Client {
         byte[] encryptedMessage = encryptMessage(payload, keyAB);
         board.add(idxAB, encryptedMessage, tagAB);
 
-        // Inject dummy message every DUMMY_RATE real messages
+        // Injecteer dummy-berichten indien nodig
         if (++messageCounter % DUMMY_RATE == 0) {
             String dummyPayload = generateDummyPayload();
             byte[] encryptedDummy = encryptMessage(dummyPayload, keyAB);
@@ -48,6 +65,7 @@ public class Client {
         tagAB = nextTag;
         keyAB = deriveKey(keyAB.getEncoded());
     }
+
 
     // Generate a dummy payload
     private String generateDummyPayload() {

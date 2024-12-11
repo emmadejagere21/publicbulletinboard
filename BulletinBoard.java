@@ -5,6 +5,8 @@ import java.util.*;
 
 public class BulletinBoard extends UnicastRemoteObject implements BulletinBoardInterface {
     private Map<Integer, List<Message>> board;
+    private Map<String, Integer> userMessageCounts = new HashMap<>();
+    private static final int MAX_MESSAGES_PER_USER = 100;
 
     // Define Message class to store value, tag, and deleted flag
     static class Message {
