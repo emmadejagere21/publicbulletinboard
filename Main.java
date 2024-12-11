@@ -21,6 +21,9 @@ public class Main {
     private static JTextArea bobMessages;
     private static final String MESSAGES_DIR = "messages";
 
+    private static boolean isAliceOnline = false;
+    private static boolean isBobOnline = false;
+
     public static void main(String[] args) throws Exception {
         // Diffie-Hellman key exchange for local clients
         KeyPair aliceKeyPair = generateDHKeyPair();
@@ -41,13 +44,22 @@ public class Main {
         bob = new Client("localhost", 0, sharedInitialTag, bobSharedKey);
 
         // Set up the GUI
-        JFrame frame = new JFrame("Secure Messaging App with RMI");
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(900, 500);
-        frame.setLocationRelativeTo(null);
+        JFrame frame1 = new JFrame("Secure Messaging App with RMI");
+        frame1.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame1.setSize(700, 500);
+        frame1.setLocationRelativeTo(null);
 
-        JPanel mainPanel = new JPanel(new GridLayout(1, 2, 20, 20));
-        mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        JFrame frame2 = new JFrame("Secure Messaging App with RMI");
+        frame2.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame2.setSize(700, 500);
+        frame2.setLocationRelativeTo(null);
+
+        JPanel panel1 = new JPanel(new GridLayout(1, 2, 20, 20));
+        panel1.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JPanel panel2 = new JPanel(new GridLayout(1, 2, 20, 20));
+        panel1.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
 
         // Alice's Panel
         aliceMessages = new JTextArea();
@@ -65,29 +77,68 @@ public class Main {
         JButton bobSend = new JButton("Send");
         JPanel bobPanel = createUserPanel("Bob", Color.GREEN, bobMessages, bobInput, bobSend);
 
-        // Add panels to the main layout
-        mainPanel.add(alicePanel);
-        mainPanel.add(bobPanel);
-        frame.add(mainPanel);
 
-        // Add export button
-        JButton exportButton = new JButton("Export Conversation");
-        exportButton.addActionListener(e -> exportConversation(frame));
-        frame.add(exportButton, BorderLayout.SOUTH);
+        JButton aliceToggleOnline = new JButton("Go Online");
+        aliceToggleOnline.addActionListener(e -> {
+            isAliceOnline = !isAliceOnline;
+            aliceToggleOnline.setText(isAliceOnline ? "Go Offline" : "Go Online");
+            aliceInput.setEnabled(isAliceOnline);
+            aliceSend.setEnabled(isAliceOnline);
+            aliceMessages.append("System: Alice is now " + (isAliceOnline ? "online" : "offline") + ".\n");
+        });
+
+        // Add "Go Online/Offline" button for Bob
+        JButton bobToggleOnline = new JButton("Go Online");
+        bobToggleOnline.addActionListener(e -> {
+            isBobOnline = !isBobOnline;
+            bobToggleOnline.setText(isBobOnline ? "Go Offline" : "Go Online");
+            bobInput.setEnabled(isBobOnline);
+            bobSend.setEnabled(isBobOnline);
+            bobMessages.append("System: Bob is now " + (isBobOnline ? "online" : "offline") + ".\n");
+        });
+
+        alicePanel.add(aliceToggleOnline, BorderLayout.NORTH);
+        bobPanel.add(bobToggleOnline, BorderLayout.NORTH);
+
+        // Add panels to the main layout
+        panel1.add(alicePanel);
+        panel2.add(bobPanel);
+        frame1.add(panel1);
+        frame2.add(panel2);
+
+        // Export button for frame1
+        JButton exportButton1 = new JButton("Export Conversation");
+        exportButton1.addActionListener(e -> exportConversation(frame1));
+        frame1.add(exportButton1, BorderLayout.SOUTH);
+
+// Export button for frame2
+        JButton exportButton2 = new JButton("Export Conversation");
+        exportButton2.addActionListener(e -> exportConversation(frame2));
+        frame2.add(exportButton2, BorderLayout.SOUTH);
 
         // Show import dialog
-        int choice = JOptionPane.showOptionDialog(frame, "Do you want to import messages or start a new conversation?",
+        int choice = JOptionPane.showOptionDialog(null, "Do you want to import messages or start a new conversation?",
                 "Import or New", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE, null,
                 new String[]{"Import", "New"}, "New");
 
         if (choice == JOptionPane.YES_OPTION) {
-            importConversation(frame);
+            importConversation(frame1);
+            importConversation(frame2);
+        } else {
+            // Optional: Clear text areas if a new conversation starts
+            aliceMessages.setText("");
+            bobMessages.setText("");
         }
 
-        frame.setVisible(true);
+        frame1.setVisible(true);
+        frame2.setVisible(true);
 
         // Action listeners for sending messages
         aliceSend.addActionListener(e -> {
+            if (!isAliceOnline) {
+                showError(frame1, "Alice is offline and cannot send messages.");
+                return;
+            }
             String message = aliceInput.getText();
             if (!message.isEmpty()) {
                 try {
@@ -95,12 +146,16 @@ public class Main {
                     aliceMessages.append("Alice: " + message + "\n");
                     aliceInput.setText("");
                 } catch (Exception ex) {
-                    showError(frame, "Failed to send message: " + ex.getMessage());
+                    showError(frame1, "Failed to send message: " + ex.getMessage());
                 }
             }
         });
 
         bobSend.addActionListener(e -> {
+            if (!isBobOnline) {
+                showError(frame2, "Bob is offline and cannot send messages.");
+                return;
+            }
             String message = bobInput.getText();
             if (!message.isEmpty()) {
                 try {
@@ -108,7 +163,7 @@ public class Main {
                     bobMessages.append("Bob: " + message + "\n");
                     bobInput.setText("");
                 } catch (Exception ex) {
-                    showError(frame, "Failed to send message: " + ex.getMessage());
+                    showError(frame2, "Failed to send message: " + ex.getMessage());
                 }
             }
         });
@@ -120,13 +175,17 @@ public class Main {
             public void run() {
                 SwingUtilities.invokeLater(() -> {
                     try {
-                        String bobMessage = bob.receive();
-                        if (bobMessage != null) {
-                            bobMessages.append("Alice: " + bobMessage + "\n");
+                        if (isBobOnline) {
+                            String bobMessage = bob.receive();
+                            if (bobMessage != null) {
+                                bobMessages.append("Alice: " + bobMessage + "\n");
+                            }
                         }
-                        String aliceMessage = alice.receive();
-                        if (aliceMessage != null) {
-                            aliceMessages.append("Bob: " + aliceMessage + "\n");
+                        if (isAliceOnline) {
+                            String aliceMessage = alice.receive();
+                            if (aliceMessage != null) {
+                                aliceMessages.append("Bob: " + aliceMessage + "\n");
+                            }
                         }
                     } catch (Exception ex) {
                         // Ignore errors during automatic checking
